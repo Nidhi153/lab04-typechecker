@@ -24,7 +24,7 @@ object AmyLexer extends Pipeline[List[File], Iterator[Token]]:
   /** Tiny reference to write a lexer with Ziplex.
    * ==============================
    * To write a lexer with Ziplex, you need to define a list of rules based on regular expressions.
-   * 
+   *
    * To define a rule, one can use the `Rule` class with the following parameters:
    *  - `regex`: the regular expression to match
    *  - `tag`: a string tag to identify the rule which must be unique among all rules
@@ -34,7 +34,7 @@ object AmyLexer extends Pipeline[List[File], Iterator[Token]]:
    *         - `toValue`: Sequence[Char] => TokenValue
    *         - `toCharacters`: TokenValue => Sequence[Char]
    *       with the property that for all l: Sequence[Char], toCharacters(toValue(l)) == l
-   * 
+   *
    * To define regular expressions, we provide some combinators in the `RegexUtils` object, in ZiplexUtils.scala.
    *  - 'c'.r matches the character c exactly
    *  - "word".r matches the sequence of characters in the string exactly
@@ -97,102 +97,162 @@ object AmyLexer extends Pipeline[List[File], Iterator[Token]]:
 
   // Primitive type names,
   def primitiveTypeRegex(): Regex[Char] =
-    ???
-    // TODO
-  val primitiveTypeRule = 
-    ???
-    // TODO
-  
+    "Int".r |
+      "String".r |
+      "Boolean".r |
+      "Unit".r
+  val primitiveTypeRule =
+    Rule(regex = primitiveTypeRegex(), tag = "primitiveType", isSeparator = false, transformation = PrimitiveTypeValueInjection.injection)
+
   // Boolean literals,
-  // TODO
-  val booleanLiteralRule = ???
+  def booleanLiteralRegex(): Regex[Char] = "true".r | "false".r
+  val booleanLiteralRule = Rule(regex = booleanLiteralRegex(), tag = "booleanLiteral", isSeparator = false, transformation = BooleanLiteralValueInjection.injection)
 
 
   // Operators,
-  // TODO
-  val operatorRule = ???
+  def operatorRegex(): Regex[Char] = "++".r |
+    "<=".r |
+    "&&".r |
+    "||".r |
+    "==".r |
+    "+".r |
+    "-".r |
+    "*".r |
+    "/".r |
+    "%".r |
+    "<".r |
+    "!".r
+  val operatorRule = Rule(regex = operatorRegex(), tag = "operator", isSeparator = false, transformation = OperatorValueInjection.injection)
 
   // Identifiers,
-  // TODO
-  val identifierRule = ???
-  
+  def identifierRegex(): Regex[Char] =
+    val alphaNum = azAZ | digits | '_'.r
+    azAZ ~ alphaNum.*
+  val identifierRule = Rule(regex = identifierRegex(), tag = "identifier", isSeparator = false, transformation = IdentifierValueInjection.injection)
+
   // Integer literal,
-  // TODO
-  val integerLiteralRule = ???
+  def integerLiteralRegex(): Regex[Char] = digits.+
+  val integerLiteralRule = Rule(regex = integerLiteralRegex(), tag = "integerLiteral", isSeparator = false, transformation = IntegerValueInjection.injection)
 
   // String literal,
-  // TODO
-  val stringLiteralRule = ???
-  
+  def stringLiteralRegex(): Regex[Char] =
+    val stringChars = anyOf(allString.filter(c => c != '\n' && c != '"'))
+    '"'.r ~ stringChars.* ~ '"'.r
+  val stringLiteralRule = Rule(regex = stringLiteralRegex(), tag = "stringLiteral", isSeparator = false, transformation = StringLiteralValueInjection.injection)
+
   // Delimiters,
-  // TODO
-  val delimiterRule = ???
+  def delimiterRegex(): Regex[Char] = "=>".r |
+    ":=".r |
+    ".".r |
+    ",".r |
+    ":".r |
+    ";".r |
+    "(".r |
+    ")".r |
+    "{".r |
+    "}".r |
+    "[".r |
+    "]".r |
+    "=".r
+  val delimiterRule = Rule(regex = delimiterRegex(), tag = "delimiter", isSeparator = false, transformation = DelimiterValueInjection.injection)
 
   // Whitespaces,
-  // TODO
-  val whitespaceRule = ???
+  val whitespaceRule = Rule(regex = whiteSpaces.+, tag = "whitespace", isSeparator = false, transformation = WhitespaceValueInjection.injection)
 
   // Single-line comments,
-  // TODO
-  val singleCommentRule = ???
- 
+  def singleCommentRegex(): Regex[Char] =
+    val noNewLine = anyOf(allString.filter(_ != '\n'))
+    "//".r ~ noNewLine.*
+  val singleCommentRule = Rule(regex = singleCommentRegex(), tag = "singleComment", isSeparator = false, transformation = CommentValueInjection.injection)
+
   // Multi-line comments,
   // NOTE: Amy does not support nested multi-line comments (e.g. `/* foo /* bar */ */`).
   //       Make sure that unclosed multi-line comments result in an ErrorToken.
-  val multiCommentRule = ???
-  // TODO
+  def closedMultiCommentRegex(): Regex[Char] =
+    val nonStar = anyOf(allString.filter(_ != '*'))
+    val nonStarNonSlash = anyOf(allString.filter(c => c != '*' && c != '/'))
+    val stars = '*'.r.+
+    "/*".r ~ (nonStar | (stars ~ nonStarNonSlash)).* ~ stars ~ '/'.r
+
+  def unclosedMultiCommentRegex(): Regex[Char] =
+    val nonStar = anyOf(allString.filter(_ != '*'))
+    val nonStarNonSlash = anyOf(allString.filter(c => c != '*' && c != '/'))
+    val stars = '*'.r.+
+    "/*".r ~ (nonStar | (stars ~ nonStarNonSlash)).* ~ opt(stars)
+
+  val closedMultiCommentRule = Rule(regex = closedMultiCommentRegex(), tag = "closedMultiComment", isSeparator = false, transformation = CommentValueInjection.injection)
+  val multiCommentRule = Rule(regex = unclosedMultiCommentRegex(), tag = "unclosedMultiComment", isSeparator = false, transformation = CommentValueInjection.injection)
 
 
   val rules = stainless.collection.List(
-      keywordRule,
-      primitiveTypeRule,
-      ???
-      // TODO: Add all your rules here
+    keywordRule,
+    primitiveTypeRule,
+    booleanLiteralRule,
+    operatorRule,
+    identifierRule,
+    integerLiteralRule,
+    stringLiteralRule,
+    delimiterRule,
+    whitespaceRule,
+    singleCommentRule,
+    closedMultiCommentRule,
+    multiCommentRule
   )
   /**
-    * Converts a Ziplex token to an Amy token, filtering out whitespace and comments.
-    * When the Ziplex token cannot be converted, returns an ErrorToken with the appropriate message.
-    * 
-    *
-    * @param pt
-    * @return
-    */
+   * Converts a Ziplex token to an Amy token, filtering out whitespace and comments.
+   * When the Ziplex token cannot be converted, returns an ErrorToken with the appropriate message.
+   *
+   *
+   * @param pt
+   * @return
+   */
   def toAmyToken(pt: (Position, com.ziplex.lexer.Token[Char])): Option[Token] =
     val (pos, token) = pt
     token.rule match
-        case _ if token.rule == keywordRule => 
-            token.value match
-                case KeywordValue(value) => Some(Tokens.KeywordToken(value.mkString("")).setPos(pos))
-        case _ if token.rule == primitiveTypeRule =>
-            token.value match
-                case PrimitiveTypeValue(value) => Some(Tokens.PrimTypeToken(value.mkString("")).setPos(pos))
-        case _ if token.rule == booleanLiteralRule =>
-            token.value match
-                case BooleanLiteralValue.True  => Some(Tokens.BoolLitToken(true).setPos(pos))
-                case BooleanLiteralValue.False => Some(Tokens.BoolLitToken(false).setPos(pos))
-        case _ if token.rule == operatorRule =>
-            token.value match
-                case OperatorValue(name) => Some(Tokens.OperatorToken(name.mkString("")).setPos(pos))
-        case _ if token.rule == identifierRule =>
-            token.value match
-                case IdentifierValue(name) => Some(Tokens.IdentifierToken(name.mkString("")).setPos(pos))
-        case _ if token.rule == integerLiteralRule =>
-            // Make sure to ensure that the integer literal fits in a 32-bit signed integer.
-            // TODO
-            ???
-        case _ if token.rule == stringLiteralRule =>
-            token.value match
-                case StringLiteralValue(value) => 
-                    // remove surrounding quotes
-                    val str = value.tail.init.mkString("")
-                    Some(Tokens.StringLitToken(str).setPos(pos))
-        case _ if token.rule == delimiterRule =>
-            token.value match
-                case DelimiterValue(value) => Some(Tokens.DelimiterToken(value.mkString("")).setPos(pos))
-        // TODO
-        // Ignore whitespace and comments
-        case _ =>
-            None
+      case _ if token.rule == keywordRule =>
+        token.value match
+          case KeywordValue(value) => Some(Tokens.KeywordToken(value.mkString("")).setPos(pos))
+      case _ if token.rule == primitiveTypeRule =>
+        token.value match
+          case PrimitiveTypeValue(value) => Some(Tokens.PrimTypeToken(value.mkString("")).setPos(pos))
+      case _ if token.rule == booleanLiteralRule =>
+        token.value match
+          case BooleanLiteralValue.True  => Some(Tokens.BoolLitToken(true).setPos(pos))
+          case BooleanLiteralValue.False => Some(Tokens.BoolLitToken(false).setPos(pos))
+      case _ if token.rule == operatorRule =>
+        token.value match
+          case OperatorValue(name) => Some(Tokens.OperatorToken(name.mkString("")).setPos(pos))
+      case _ if token.rule == identifierRule =>
+        token.value match
+          case IdentifierValue(name) => Some(Tokens.IdentifierToken(name.mkString("")).setPos(pos))
+      case _ if token.rule == integerLiteralRule =>
+        // Make sure to ensure that the integer literal fits in a 32-bit signed integer.
+        token.value match
+          case IntegerValue(value) =>
+            val str = value.mkString("")
+            val int = BigInt(str)
+            if int.isValidInt then
+              Some(Tokens.IntLitToken(int.toInt).setPos(pos))
+            else
+              Some(Tokens.ErrorToken(s"Integer literal out of range: $str").setPos(pos))
+      case _ if token.rule == stringLiteralRule =>
+        token.value match
+          case StringLiteralValue(value) =>
+            // remove surrounding quotes
+            val str = value.tail.init.mkString("")
+            Some(Tokens.StringLitToken(str).setPos(pos))
+      case _ if token.rule == delimiterRule =>
+        token.value match
+          case DelimiterValue(value) => Some(Tokens.DelimiterToken(value.mkString("")).setPos(pos))
+      case _ if token.rule == multiCommentRule =>
+        token.value match
+          case CommentValue(value) =>
+            Some(ErrorToken(s"Unclosed multiline comment: ${value.take(10).mkString("")}...").setPos(pos))
+      case _ if token.rule == whitespaceRule || token.rule == singleCommentRule || token.rule == closedMultiCommentRule =>
+        None
+      // Ignore whitespace and comments
+      case _ =>
+        None
     end match
   end toAmyToken
 
@@ -212,20 +272,20 @@ object AmyLexer extends Pipeline[List[File], Iterator[Token]]:
       val currentFileTokens = ArrayBuffer.empty[Token]
       withPositions.foreach: t =>
         AmyLexer.toAmyToken(t) match
-          case Some(token) => 
+          case Some(token) =>
             currentFileTokens.append(token)
           case None => ()
-      
+
       if !suffix.isEmpty then
         val errorPos = SourcePosition(file, nextPos.line, (input.size - suffix.size + 1).toInt)
         currentFileTokens.append(ErrorToken(s"Unrecognized token starting with: '${suffix.efficientList.mkString("").take(10)}'").setPos(errorPos))
         nextPos = ZipLexUtils.nextPosition(nextPos, suffix)
       end if
       currentFileTokens.append(Tokens.EOFToken().setPos(nextPos))
-    
+
       resTokens ++= currentFileTokens.map:
         case token@ErrorToken(msg) =>
-            ctx.reporter.fatal("Unknown token at " + token.position + ": " + msg)
+          ctx.reporter.fatal("Unknown token at " + token.position + ": " + msg)
         case token => token
     end for
     resTokens.toIterator
@@ -245,9 +305,9 @@ object ZiplexTokens:
   case class KeywordValue(value: List[Char]) extends TokenValue
   case class PrimitiveTypeValue(value: List[Char]) extends TokenValue
   enum BooleanLiteralValue extends TokenValue:
-      case True
-      case False
-      case Broken(value: List[Char])
+    case True
+    case False
+    case Broken(value: List[Char])
   case class OperatorValue(value: List[Char]) extends TokenValue
   case class StringLiteralValue(value: List[Char]) extends TokenValue
   case class DelimiterValue(value: List[Char]) extends TokenValue
@@ -255,102 +315,102 @@ object ZiplexTokens:
   case class CommentValue(value: List[Char]) extends TokenValue
 
   case object IntegerValueInjection:
-      def toValue(v: Sequence[Char]): TokenValue = 
-          val list = v.efficientList
-          IntegerValue(list)
-      def toCharacters(t: TokenValue): Sequence[Char] = t match
-              case IntegerValue(text) => seqFromList(text)
-              case _ => emptySeq()
-      
-      val injection: TokenValueInjection[Char] = TokenValueInjection(toValue, toCharacters)
+    def toValue(v: Sequence[Char]): TokenValue =
+      val list = v.efficientList
+      IntegerValue(list)
+    def toCharacters(t: TokenValue): Sequence[Char] = t match
+      case IntegerValue(text) => seqFromList(text)
+      case _ => emptySeq()
+
+    val injection: TokenValueInjection[Char] = TokenValueInjection(toValue, toCharacters)
   end IntegerValueInjection
 
   case object IdentifierValueInjection:
-      def toValue(v: Sequence[Char]): TokenValue = IdentifierValue(v.efficientList)
-      def toCharacters(t: TokenValue): Sequence[Char] = t match
-          case IdentifierValue(value) => seqFromList(value)
-          case _ => emptySeq()
-      
-      val injection: TokenValueInjection[Char] = TokenValueInjection(toValue, toCharacters)
+    def toValue(v: Sequence[Char]): TokenValue = IdentifierValue(v.efficientList)
+    def toCharacters(t: TokenValue): Sequence[Char] = t match
+      case IdentifierValue(value) => seqFromList(value)
+      case _ => emptySeq()
+
+    val injection: TokenValueInjection[Char] = TokenValueInjection(toValue, toCharacters)
   end IdentifierValueInjection
 
   // forall v: Sequence[Char], toCharacters(toValue(l)) == l
   case object KeywordValueInjection:
-      def toValue(c: Sequence[Char]): TokenValue = KeywordValue(c.efficientList)
-      def toCharacters(t: TokenValue): Sequence[Char] = t match
-          case KeywordValue(value) => seqFromList(value)
-          case _ => emptySeq()
-      val injection: TokenValueInjection[Char] = TokenValueInjection(toValue, toCharacters)
+    def toValue(c: Sequence[Char]): TokenValue = KeywordValue(c.efficientList)
+    def toCharacters(t: TokenValue): Sequence[Char] = t match
+      case KeywordValue(value) => seqFromList(value)
+      case _ => emptySeq()
+    val injection: TokenValueInjection[Char] = TokenValueInjection(toValue, toCharacters)
   end KeywordValueInjection
 
   case object PrimitiveTypeValueInjection:
-      def toValue(v: Sequence[Char]): TokenValue = PrimitiveTypeValue(v.efficientList)
-      def toCharacters(t: TokenValue): Sequence[Char] = t match
-          case PrimitiveTypeValue(value) => seqFromList(value)
-          case _ => emptySeq()
+    def toValue(v: Sequence[Char]): TokenValue = PrimitiveTypeValue(v.efficientList)
+    def toCharacters(t: TokenValue): Sequence[Char] = t match
+      case PrimitiveTypeValue(value) => seqFromList(value)
+      case _ => emptySeq()
 
-      val injection: TokenValueInjection[Char] = TokenValueInjection(toValue, toCharacters)
+    val injection: TokenValueInjection[Char] = TokenValueInjection(toValue, toCharacters)
   end PrimitiveTypeValueInjection
 
-  lazy val stringTrue: List[Char] = List('t', 'r', 'u', 'e')    
+  lazy val stringTrue: List[Char] = List('t', 'r', 'u', 'e')
   lazy val stringFalse: List[Char] = List('f', 'a', 'l', 's', 'e')
   lazy val stringTrueConc: Sequence[Char] = seqFromList(stringTrue)
   lazy val stringFalseConc: Sequence[Char] = seqFromList(stringFalse)
   case object BooleanLiteralValueInjection:
-      def toValue(v: Sequence[Char]): TokenValue = v.efficientList match
-          case l if l == stringTrue => BooleanLiteralValue.True
-          case l if l == stringFalse => BooleanLiteralValue.False
-          case l => BooleanLiteralValue.Broken(l)
-      def toCharacters(t: TokenValue): Sequence[Char] = t match
-          case BooleanLiteralValue.True => seqFromList(stringTrue)
-          case BooleanLiteralValue.False => seqFromList(stringFalse)
-          case BooleanLiteralValue.Broken(value) => seqFromList(value)
-          case _ => emptySeq()
-      val injection: TokenValueInjection[Char] = TokenValueInjection(toValue, toCharacters)
+    def toValue(v: Sequence[Char]): TokenValue = v.efficientList match
+      case l if l == stringTrue => BooleanLiteralValue.True
+      case l if l == stringFalse => BooleanLiteralValue.False
+      case l => BooleanLiteralValue.Broken(l)
+    def toCharacters(t: TokenValue): Sequence[Char] = t match
+      case BooleanLiteralValue.True => seqFromList(stringTrue)
+      case BooleanLiteralValue.False => seqFromList(stringFalse)
+      case BooleanLiteralValue.Broken(value) => seqFromList(value)
+      case _ => emptySeq()
+    val injection: TokenValueInjection[Char] = TokenValueInjection(toValue, toCharacters)
   end BooleanLiteralValueInjection
 
   case object OperatorValueInjection:
     def toValue(v: Sequence[Char]): TokenValue = OperatorValue(v.efficientList)
-      def toCharacters(t: TokenValue): Sequence[Char] = t match
-          case OperatorValue(value) => seqFromList(value)
-          case _ => emptySeq()
-      val injection: TokenValueInjection[Char] = TokenValueInjection(toValue, toCharacters)
+    def toCharacters(t: TokenValue): Sequence[Char] = t match
+      case OperatorValue(value) => seqFromList(value)
+      case _ => emptySeq()
+    val injection: TokenValueInjection[Char] = TokenValueInjection(toValue, toCharacters)
   end OperatorValueInjection
 
   case object StringLiteralValueInjection:
-      def toValue(v: Sequence[Char]): TokenValue = StringLiteralValue(v.efficientList)
-      def toCharacters(t: TokenValue): Sequence[Char] =
-          t match
-              case StringLiteralValue(value) => seqFromList(value)
-              case _ => emptySeq()
+    def toValue(v: Sequence[Char]): TokenValue = StringLiteralValue(v.efficientList)
+    def toCharacters(t: TokenValue): Sequence[Char] =
+      t match
+        case StringLiteralValue(value) => seqFromList(value)
+        case _ => emptySeq()
 
-      val injection: TokenValueInjection[Char] = TokenValueInjection(toValue, toCharacters)
+    val injection: TokenValueInjection[Char] = TokenValueInjection(toValue, toCharacters)
   end StringLiteralValueInjection
 
   case object DelimiterValueInjection:
-      def toValue(v: Sequence[Char]): TokenValue = DelimiterValue(v.efficientList)
-      def toCharacters(t: TokenValue): Sequence[Char] = t match
-          case DelimiterValue(value) => seqFromList(value)
-          case _ => emptySeq()
-      
-      val injection: TokenValueInjection[Char] = TokenValueInjection(toValue, toCharacters)
+    def toValue(v: Sequence[Char]): TokenValue = DelimiterValue(v.efficientList)
+    def toCharacters(t: TokenValue): Sequence[Char] = t match
+      case DelimiterValue(value) => seqFromList(value)
+      case _ => emptySeq()
+
+    val injection: TokenValueInjection[Char] = TokenValueInjection(toValue, toCharacters)
   end DelimiterValueInjection
 
   case object WhitespaceValueInjection:
-      def toValue(v: Sequence[Char]): TokenValue = WhitespaceValue(v.efficientList)
-      def toCharacters(t: TokenValue): Sequence[Char] = 
-          t match
-              case WhitespaceValue(value) => seqFromList(value)
-              case _ => emptySeq()
-      val injection: TokenValueInjection[Char] = TokenValueInjection(toValue, toCharacters)
+    def toValue(v: Sequence[Char]): TokenValue = WhitespaceValue(v.efficientList)
+    def toCharacters(t: TokenValue): Sequence[Char] =
+      t match
+        case WhitespaceValue(value) => seqFromList(value)
+        case _ => emptySeq()
+    val injection: TokenValueInjection[Char] = TokenValueInjection(toValue, toCharacters)
   end WhitespaceValueInjection
 
   case object CommentValueInjection:
-      def toValue(v: Sequence[Char]): TokenValue = CommentValue(v.efficientList)
-      def toCharacters(t: TokenValue): Sequence[Char] = 
-          t match
-              case CommentValue(value) => seqFromList(value)
-              case _ => emptySeq()
-      val injection: TokenValueInjection[Char] = TokenValueInjection(toValue, toCharacters)
+    def toValue(v: Sequence[Char]): TokenValue = CommentValue(v.efficientList)
+    def toCharacters(t: TokenValue): Sequence[Char] =
+      t match
+        case CommentValue(value) => seqFromList(value)
+        case _ => emptySeq()
+    val injection: TokenValueInjection[Char] = TokenValueInjection(toValue, toCharacters)
   end CommentValueInjection
 end ZiplexTokens

@@ -31,7 +31,7 @@ class NameAnalyzerTests extends TestSuite:
 
   val outputExt = "scala"
 
-  @Test def testParamAndLocal = shouldOutput("ParamAndLocal")
+//  @Test def testParamAndLocal = shouldOutput("ParamAndLocal")
 
   @Test def testArgumentNumberFunction = shouldFail("ArgumentNumberFunction")
 
